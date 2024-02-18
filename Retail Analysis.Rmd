@@ -1,0 +1,226 @@
+---
+title: "Retail Analysis"
+output: html_notebook
+data source: https://www.kaggle.com/datasets/manjeetsingh/retaildataset
+---
+
+Importing Packages
+```{r}
+install.packages("tidyverse")
+install.packages("patchwork")
+install.packages("date")
+library(readr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(lubridate)
+library(patchwork)
+library(date)
+```
+Importing Datasets
+```{r}
+stores <- read_csv("E:\\Salman Study Files\\Career Paths\\Data Science\\Open Source Projects\\Finance\\Retail Analytics\\stores data-set.csv")
+sales <- read_csv("E:\\Salman Study Files\\Career Paths\\Data Science\\Open Source Projects\\Finance\\Retail Analytics\\sales data-set.csv")
+features <- read_csv("E:\\Salman Study Files\\Career Paths\\Data Science\\Open Source Projects\\Finance\\Retail Analytics\\Features data set.csv")
+```
+Understanding Data
+
+Finding Column and Data Types
+```{r}
+str(stores)
+str(sales)
+str(features)
+```
+Removing Null Values Temporarily
+```{r}
+features_exc_markdown<-subset(features, select = -c(MarkDown1,MarkDown2,MarkDown3,MarkDown4,MarkDown5)) #Excluding Markdown
+features_clean<-na.omit(features) #Omitting Null Values
+features_exc_markdown_clean<-na.omit(features_exc_markdown) #Omitting Null Values
+```
+
+Exploratory Data Analysis
+```{r}
+sales %>%
+  group_by(Store) %>%
+  summarise(total_sales = sum(Weekly_Sales), mean_sales = mean(Weekly_Sales), median_sales = median(Weekly_Sales), sd_sales = sd(Weekly_Sales))
+
+features_exc_markdown_clean %>%
+  group_by(Store) %>%
+  summarise(total_CPI = sum(CPI), mean_CPI = mean(CPI), median_CPI = median(CPI), sd_CPI = sd(CPI))
+
+stores %>%
+  group_by(Store) %>%
+  summarise(total_size = sum(Size),mean_size = mean(Size), median_size = median(Size))
+
+arrange(mutate(features, Total_Markdown = MarkDown1+MarkDown2+MarkDown3+MarkDown4+MarkDown5), desc(Total_Markdown))
+```
+
+Box Plots
+```{r}
+boxplot(features$Fuel_Price)
+boxplot(features$CPI)
+outliers <- boxplot(sales$Weekly_Sales, plot = FALSE)$out
+sales_without_outlier <- sales$Weekly_Sales[-which(sales$Weekly_Sales %in% outliers)] 
+boxplot(sales_without_outlier)
+boxplot(stores$Size)
+```
+
+Joining Tables
+```{r}
+Features_Sales<-left_join(
+  features,
+  sales,
+  by = NULL,
+  copy = FALSE,
+  suffix = c(".features", ".sales"),
+  keep = NULL,
+  na_matches = c("na", "never"),
+  multiple = "all",
+  unmatched = "drop",
+  relationship = NULL
+)
+Combined_Table<-left_join(
+  Features_Sales,
+  stores,
+  by = "Store",
+  copy = FALSE,
+  suffix = c(".features", ".sales"),
+  keep = NULL,
+  na_matches = c("na", "never"),
+  multiple = "all",
+  unmatched = "drop",
+  relationship = NULL
+)
+
+```
+
+```{r}
+Combined_Table %>%
+  group_by(Store) %>%
+  arrange(desc(Weekly_Sales))
+
+Combined_Table %>%
+  group_by(Type) %>%
+  arrange(desc(Weekly_Sales))
+
+Combined_Table %>%
+  group_by(Dept) %>%
+  arrange(desc(Weekly_Sales))
+
+Combined_Table %>%
+  group_by(Store) %>%
+  arrange(desc(Size))
+
+features %>%
+  group_by(Store) %>%
+  arrange(desc(Fuel_Price))
+
+features %>%
+  group_by(Store) %>%
+  arrange(desc(CPI))
+
+sales %>%
+  group_by(IsHoliday) %>%
+  count(IsHoliday,name="Count")
+
+Combined_Table %>%
+  mutate(Total_Markdown = MarkDown1+MarkDown2+MarkDown3+MarkDown4+MarkDown5) %>%
+  group_by(IsHoliday) %>%
+  arrange(desc(Total_Markdown))
+
+Combined_Table %>%
+  mutate(Total_Markdown = MarkDown1+MarkDown2+MarkDown3+MarkDown4+MarkDown5) %>%
+  group_by(IsHoliday) %>%
+  summarize(TotalMarkdown = sum(na.omit(Total_Markdown)))
+```
+
+Column Charts
+```{r}
+
+# Filter out rows with missing values in the columns used for the charts
+Combined_Table_clean <- Combined_Table %>%
+  mutate(Total_Markdown = MarkDown1+MarkDown2+MarkDown3+MarkDown4+MarkDown5) %>%
+  filter(!is.na(Weekly_Sales) & !is.na(Total_Markdown))
+
+# Create BarChart1
+BarChart1 <- ggplot(data = Combined_Table_clean, aes(x = Store, y = Weekly_Sales)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = Weekly_Sales), vjust = 1.6, color = "white", size = 3.5) +
+  theme_minimal()
+
+# Create BarChart2
+BarChart2 <- Combined_Table_clean %>%
+  ggplot(aes(x = IsHoliday, y = Total_Markdown)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = Total_Markdown), vjust = 1.6, color = "white", size = 3.5) +
+  facet_wrap(~Type) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+
+# Create BarChart3
+BarChart3 <- ggplot(data = Combined_Table_clean, aes(x = Store, y = Weekly_Sales)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = Weekly_Sales), vjust = 1.6, color = "white", size = 3.5) +
+  facet_wrap(~Type) +
+  theme_minimal()
+
+# Combine the charts
+((BarChart1 | BarChart2) / BarChart3)
+```
+
+Line Charts
+```{r}
+
+# Calculate the mean weekly sales for each week
+weekly_mean_sales <- Combined_Table %>%
+  group_by(week = week(dmy(Date))) %>%
+  summarize(mean_sales = mean(Weekly_Sales, na.rm = TRUE))
+
+# Create a line chart of mean weekly sales over time
+LineChart1<-ggplot(data = weekly_mean_sales, aes(x = week, y = mean_sales)) +
+  geom_line(color = "steelblue") +
+  geom_point(color = "steelblue") +
+  labs(x = "Week", y = "Mean Weekly Sales") # Customize axis labels
+  ggtitle("Mean Weekly Sales Over Time") # Add a chart title
+
+
+# Calculate the overall markdown for each week
+overall_markdown <- Combined_Table_clean %>%
+  group_by(week = week(dmy(Date))) %>%
+  summarize(Total_Markdown_Week = sum(Total_Markdown, na.rm = TRUE))
+
+# Create a line chart of Overall markdown over time
+LineChart2<-ggplot(data = overall_markdown, aes(x = week, y = Total_Markdown_Week)) +
+  geom_line(color = "steelblue") +
+  geom_point(color = "steelblue") +
+  labs(x = "Week", y = "Total Markdown") # Customize axis labels
+  ggtitle("Overall Markdown Over Time") # Add a chart title
+
+# Calculate the mean fuel price for each week
+weekly_mean_fuel<- Combined_Table %>%
+  group_by(week = week(dmy(Date))) %>%
+  summarize(Mean_Fuel = mean(Fuel_Price, na.rm = TRUE))
+
+
+# Create a line chart of Mean Fuel Price over time
+LineChart3<-ggplot(data = weekly_mean_fuel, aes(x = week, y = Mean_Fuel)) +
+  geom_line(color = "steelblue") +
+  geom_point(color = "steelblue") +
+  labs(x = "Week", y = "Mean Fuel Price") # Customize axis labels
+  ggtitle("Mean Fuel Price Over Time") # Add a chart title
+
+# Calculate the mean CPI for each week
+weekly_mean_CPI <- Combined_Table %>%
+  group_by(week = week(dmy(Date))) %>%
+  summarize(Mean_CPI = mean(CPI, na.rm = TRUE))
+
+
+# Create a line chart of Overall markdown over time
+LineChart4<-ggplot(data = weekly_mean_CPI, aes(x = week, y = Mean_CPI)) +
+  geom_line(color = "steelblue") +
+  geom_point(color = "steelblue") +
+  labs(x = "Week", y = "Mean CPI") # Customize axis labels
+  ggtitle("Mean CPI Over Time") # Add a chart title
+  
+((LineChart1|LineChart2)/(LineChart3|LineChart4))
+```
+
